@@ -19,11 +19,24 @@ function numLike(raw,val){let rep=String(val);if(/[０-９]/.test(raw))rep=rep.r
 function numericAlternatives(raw){let v=parseFloat(toAsciiNum(raw));if(isNaN(v))return[];let pool=[];let add=x=>{if(x>=0&&x!==v&&!pool.includes(x))pool.push(x)};if(v===0){[1,2,5,10].forEach(add)}else if(v<5){[v+1,v+2,Math.max(0,v-1),v*2].forEach(add)}else if(v<20){[v+1,v+5,Math.max(0,v-2),Math.round(v*1.5)].forEach(add)}else{[v+5,v+10,Math.max(0,v-5),Math.round(v*1.25),Math.round(v*1.5)].forEach(add)}return shuffle(pool).map(x=>numLike(raw,x))}
 function alterationCandidates(text){let out=[];for(let m of text.matchAll(numRe)){let alts=numericAlternatives(m[0]);alts.slice(0,4).forEach(rep=>out.push({text:text.slice(0,m.index)+rep+text.slice(m.index+m[0].length),wrong:rep,right:m[0],pos:m.index}))}for(let [a,b] of termPairs){let from=0;while((from=text.indexOf(a,from))>=0){out.push({text:text.slice(0,from)+b+text.slice(from+a.length),wrong:b,right:a,pos:from});from+=a.length}from=0;while((from=text.indexOf(b,from))>=0){out.push({text:text.slice(0,from)+a+text.slice(from+b.length),wrong:a,right:b,pos:from});from+=b.length}}return out}
 function alterText(text){let c=alterationCandidates(text);return c.length?c[Math.floor(Math.random()*c.length)]:null}
-function blankCandidates(text){let out=[];for(let m of text.matchAll(numRe)){let opts=numericAlternatives(m[0]);if(opts.length>=3)out.push({q:text.slice(0,m.index)+'［　］'+text.slice(m.index+m[0].length),ans:m[0],opts:shuffle([m[0],...opts.slice(0,3)]),highlight:m[0],pos:m.index})}for(let [a,b] of termPairs){let from=0;while((from=text.indexOf(a,from))>=0){let distract=shuffle([b,'該当なし','その他']);out.push({q:text.slice(0,from)+'［　］'+text.slice(from+a.length),ans:a,opts:shuffle([a,...distract.slice(0,3)]),highlight:a,pos:from});from+=a.length}from=0;while((from=text.indexOf(b,from))>=0){let distract=shuffle([a,'該当なし','その他']);out.push({q:text.slice(0,from)+'［　］'+text.slice(from+b.length),ans:b,opts:shuffle([b,...distract.slice(0,3)]),highlight:b,pos:from});from+=b.length}}return out}
+function protectedMedicalSpan(text,start,end){
+  // Do not split numbers that are part of medical abbreviations such as ETCO2, SpO2, PaCO2, PaO2, FiO2.
+  const left=text.slice(Math.max(0,start-12),start), right=text.slice(end,end+12);
+  if(/[A-Za-z][A-Za-z0-9]*$/i.test(left) || /^[A-Za-z]/i.test(right)) return true;
+  return false;
+}
+function expandClinicalNumber(text,start,end){
+  // Keep clinically meaningful number + unit expressions together (e.g. 30回/分, 90秒以内, 1mg, 0.01mg/kg, 95％, 100mmHg).
+  const tail=text.slice(end);
+  const unit=tail.match(/^(?:\s*)(?:mg(?:\\/kg)?|μg(?:\\/kg)?|mcg(?:\\/kg)?|g|kg|mL|ml|L|mmHg|cmH2O|回\\/分|回\/分|回|秒(?:以内|以上|以下)?|分(?:以内|以上|以下)?|時間(?:以内|以上|以下)?|％|%|℃|歳(?:以上|以下)?)/i);
+  if(unit) end+=unit[0].length;
+  return {start,end,token:text.slice(start,end)};
+}
+function blankCandidates(text){let out=[];for(let m of text.matchAll(numRe)){let start=m.index,end=m.index+m[0].length;if(protectedMedicalSpan(text,start,end))continue;let span=expandClinicalNumber(text,start,end), ans=span.token;let opts=numericAlternatives(m[0]);if(opts.length>=3){let suffix=ans.slice(m[0].length);let choices=[ans,...opts.slice(0,3).map(x=>x+suffix)];out.push({q:text.slice(0,span.start)+'［　］'+text.slice(span.end),ans,opts:shuffle(choices),highlight:ans,pos:span.start})}}for(let [a,b] of termPairs){let from=0;while((from=text.indexOf(a,from))>=0){let distract=shuffle([b,'該当なし','その他']);out.push({q:text.slice(0,from)+'［　］'+text.slice(from+a.length),ans:a,opts:shuffle([a,...distract.slice(0,3)]),highlight:a,pos:from});from+=a.length}from=0;while((from=text.indexOf(b,from))>=0){let distract=shuffle([a,'該当なし','その他']);out.push({q:text.slice(0,from)+'［　］'+text.slice(from+b.length),ans:b,opts:shuffle([b,...distract.slice(0,3)]),highlight:b,pos:from});from+=b.length}}return out}
 function genericBlankData(text){
   const stop=new Set(['場合','こと','ため','もの','これら','それぞれ','傷病者','患者','必要','実施','確認','行う','認める','できる','される','による','における']);
   let ms=[...text.matchAll(/[一-龠々ァ-ヶー]{2,12}/g)].filter(m=>!stop.has(m[0]));
-  if(!ms.length) ms=[...text.matchAll(/[A-Za-z]{2,12}/g)];
+  if(!ms.length) ms=[...text.matchAll(/[A-Za-z]{2,10}[0-9]{0,2}/g)];
   if(!ms.length) return {q:'［　］',ans:text,opts:shuffle([text,'該当なし','その他','判断できない']),highlight:text,pos:0};
   let m=ms[Math.floor(Math.random()*ms.length)], ans=m[0];
   let pool=[];

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'unyou-shiken-v4.3-20260814';
+const CACHE_NAME = 'unyou-shiken-v4.4-20260814';
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', event => {
